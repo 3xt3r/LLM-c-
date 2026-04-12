@@ -19,17 +19,20 @@ def prefill_classification(rec: ComponentRecord) -> None:
     if rec.is_compiler_intrinsic:
         _set(rec, "not a library", "system/platform/compiler header", "high",
              "Compiler intrinsic header (SIMD, architecture-specific).")
+        rec.discovery_source = "system header"
         return
 
     if rec.is_system_header:
         _set(rec, "not a library", "system/platform/compiler header", "high",
              "Standard C/C++ library or POSIX system header.")
+        rec.discovery_source = "system header"
         return
 
     if rec.is_kernel_or_sdk_header:
         label = "windows-specific platform header" if rec.is_windows_specific else "kernel/platform SDK header"
         _set(rec, "not a library", "system/platform/compiler header", "high",
              f"This is a {label}, not a third-party dependency.")
+        rec.discovery_source = "system header"
         return
 
     # --- Evidence summary ---
@@ -38,6 +41,11 @@ def prefill_classification(rec: ComponentRecord) -> None:
     has_final_link = bool(rec.final_link_evidence)
     has_detection = bool(rec.build_detection_evidence)
     has_include = bool(rec.include_evidence)
+
+    # --- Compute discovery_source ---
+    rec.discovery_source = _compute_discovery_source(
+        has_in_tree, has_include, has_detection, has_build_integration, has_final_link
+    )
 
     # --- Platform / optional detection ---
     platform = _detect_platform(rec)
@@ -53,7 +61,6 @@ def prefill_classification(rec: ComponentRecord) -> None:
         return
 
     if has_in_tree:
-        # Source present but not wired into build — might be incomplete vendoring
         _set(rec, "vendored / in-tree",
              "in-tree source + build participation", "medium",
              "Local source tree found but build participation is not fully confirmed.")
@@ -90,7 +97,6 @@ def prefill_classification(rec: ComponentRecord) -> None:
         return
 
     if has_include:
-        # Only #include evidence — weakest signal
         _set(rec, "unresolved",
              "insufficient evidence", "low",
              "#include found but no build-system evidence. May be an indirect include or unused header.")
@@ -109,6 +115,36 @@ def prefill_classification(rec: ComponentRecord) -> None:
         "Need build detection, in-tree source, or link evidence."
     ]
     _save_heuristic(rec)
+
+
+def _compute_discovery_source(
+    has_in_tree: bool,
+    has_include: bool,
+    has_detection: bool,
+    has_build_integration: bool,
+    has_final_link: bool,
+) -> str:
+    """
+    Determine how the component was discovered — used for segmentation in reports.
+
+    Rules (priority order, first match wins):
+      - has in-tree source dirs                  -> "in-tree source"
+      - has build config (detect/integrate/link) -> "build config"
+      - has only #include evidence               -> "header only"
+      - nothing                                  -> "unknown"
+
+    A component can combine sources, e.g. "in-tree source + build config"
+    when vendored dirs AND build macros both point to it.
+    """
+    parts: list[str] = []
+    if has_in_tree:
+        parts.append("in-tree source")
+    if has_detection or has_build_integration or has_final_link:
+        parts.append("build config")
+    if has_include and not parts:
+        # only add "header only" when there's no stronger evidence
+        parts.append("header only")
+    return " + ".join(parts) if parts else "unknown"
 
 
 def _set(rec: ComponentRecord, cls: str, ev: str, conf: str, why: str) -> None:
