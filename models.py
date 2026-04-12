@@ -47,6 +47,14 @@ class ComponentRecord:
     heuristic_evidence_level: str = ""
     heuristic_confidence: str = ""
 
+    # Version — filled by version_extractor after classification
+    version: str = ""              # e.g. "1.2.3" or "unknown"
+    version_source: str = ""       # which file/snippet the version came from
+    version_confidence: str = ""   # "high" | "medium" | "low"
+    version_is_minimum: bool = False  # True = версия из find_package(>=X), не точная
+    cpe: str = ""                  # cpe:2.3:a:vendor:product:version:*:*:*:*:*:*:*
+    cpe_vendor_known: bool = False # True = vendor точно соответствует NVD
+
     # Discovery source — computed after evidence collection
     # Possible values (may be combined with " + "):
     #   "in-tree source"   — found as vendored directory with .c/.cpp files
@@ -76,6 +84,12 @@ class ComponentRecord:
             "why": self.why,
             "optional_or_platform_specific": self.optional_or_platform_specific,
             "missing_evidence": self.missing_evidence,
+            "version": self.version,
+            "version_source": self.version_source,
+            "version_confidence": self.version_confidence,
+            "version_is_minimum": self.version_is_minimum,
+            "cpe": self.cpe,
+            "cpe_vendor_known": self.cpe_vendor_known,
             "discovery_source": self.discovery_source,
             "heuristic": {
                 "classification": self.heuristic_classification,

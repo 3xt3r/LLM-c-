@@ -4,58 +4,45 @@ from models import ComponentRecord
 
 
 # ---------------------------------------------------------------------------
-# Heuristic classifier — runs before LLM, result stored as heuristic_*
-# LLM receives it as context and can override.
+# Heuristic classifier
 # ---------------------------------------------------------------------------
 
 def prefill_classification(rec: ComponentRecord) -> None:
-    """
-    Fill rec.classification, evidence_level, confidence, why
-    from available evidence using deterministic rules.
-    Also stores the result in heuristic_* fields for LLM context.
-    """
-
-    # --- Definite non-library categories ---
     if rec.is_compiler_intrinsic:
         _set(rec, "not a library", "system/platform/compiler header", "high",
-             "Compiler intrinsic header (SIMD, architecture-specific).")
+             "Заголовок компилятора (SIMD, архитектурно-специфичные интринсики).")
         rec.discovery_source = "system header"
         return
 
     if rec.is_system_header:
         _set(rec, "not a library", "system/platform/compiler header", "high",
-             "Standard C/C++ library or POSIX system header.")
+             "Стандартный заголовок C/C++ или системный заголовок POSIX.")
         rec.discovery_source = "system header"
         return
 
     if rec.is_kernel_or_sdk_header:
-        label = "windows-specific platform header" if rec.is_windows_specific else "kernel/platform SDK header"
+        label = "заголовок Windows SDK" if rec.is_windows_specific else "заголовок ядра/платформы"
         _set(rec, "not a library", "system/platform/compiler header", "high",
-             f"This is a {label}, not a third-party dependency.")
+             f"Это {label}, не сторонняя зависимость.")
         rec.discovery_source = "system header"
         return
 
-    # --- Evidence summary ---
-    has_in_tree = bool(rec.in_tree_source_evidence)
+    has_in_tree         = bool(rec.in_tree_source_evidence)
     has_build_integration = bool(rec.build_integration_evidence)
-    has_final_link = bool(rec.final_link_evidence)
-    has_detection = bool(rec.build_detection_evidence)
-    has_include = bool(rec.include_evidence)
+    has_final_link      = bool(rec.final_link_evidence)
+    has_detection       = bool(rec.build_detection_evidence)
+    has_include         = bool(rec.include_evidence)
 
-    # --- Compute discovery_source ---
     rec.discovery_source = _compute_discovery_source(
         has_in_tree, has_include, has_detection, has_build_integration, has_final_link
     )
 
-    # --- Platform / optional detection ---
     platform = _detect_platform(rec)
-
-    # --- Classification logic ---
 
     if has_in_tree and (has_build_integration or has_final_link):
         _set(rec, "vendored / in-tree",
              "in-tree source + build participation", "high",
-             "Local source tree exists inside the repository and is integrated into the build.")
+             "Исходный код компонента находится внутри репозитория и участвует в сборке.")
         rec.optional_or_platform_specific = platform or "no"
         _save_heuristic(rec)
         return
@@ -63,8 +50,8 @@ def prefill_classification(rec: ComponentRecord) -> None:
     if has_in_tree:
         _set(rec, "vendored / in-tree",
              "in-tree source + build participation", "medium",
-             "Local source tree found but build participation is not fully confirmed.")
-        rec.missing_evidence = ["Need LDADD / target_link_libraries / -lNAME evidence."]
+             "Исходники найдены внутри репозитория, но участие в сборке не подтверждено полностью.")
+        rec.missing_evidence = ["Требуется: LDADD / target_link_libraries / -lNAME в Makefile или CMakeLists."]
         rec.optional_or_platform_specific = platform or "no"
         _save_heuristic(rec)
         return
@@ -72,7 +59,7 @@ def prefill_classification(rec: ComponentRecord) -> None:
     if has_final_link:
         _set(rec, "external system dependency",
              "confirmed linked", "high",
-             "Referenced in final link step (-lNAME or target_link_libraries).")
+             "Компонент явно указан в шаге финальной линковки (-lNAME или target_link_libraries).")
         rec.optional_or_platform_specific = platform or "no"
         _save_heuristic(rec)
         return
@@ -80,7 +67,7 @@ def prefill_classification(rec: ComponentRecord) -> None:
     if has_build_integration:
         _set(rec, "external system dependency",
              "build-integrated", "medium",
-             "Build system detects and propagates this dependency into build variables.")
+             "Система сборки обнаруживает зависимость и передаёт её в переменные сборки.")
         rec.optional_or_platform_specific = platform or "no"
         _save_heuristic(rec)
         return
@@ -88,9 +75,9 @@ def prefill_classification(rec: ComponentRecord) -> None:
     if has_detection:
         _set(rec, "external system dependency",
              "probe only", "low",
-             "Build system probes for this library but integration is not confirmed.")
+             "Система сборки проверяет наличие библиотеки, но интеграция в сборку не подтверждена.")
         rec.missing_evidence = [
-            "Need AC_SUBST / AM_CONDITIONAL / LDADD / target_link_libraries evidence."
+            "Требуется: AC_SUBST / AM_CONDITIONAL / LDADD / target_link_libraries."
         ]
         rec.optional_or_platform_specific = platform or "no"
         _save_heuristic(rec)
@@ -99,20 +86,19 @@ def prefill_classification(rec: ComponentRecord) -> None:
     if has_include:
         _set(rec, "unresolved",
              "insufficient evidence", "low",
-             "#include found but no build-system evidence. May be an indirect include or unused header.")
+             "Найден #include, но отсутствуют улики из системы сборки. Возможно, транзитивная или неиспользуемая зависимость.")
         rec.missing_evidence = [
-            "Need build detection, final link, or in-tree source evidence."
+            "Требуется: обнаружение или линковка в системе сборки, либо исходники внутри репозитория."
         ]
         rec.optional_or_platform_specific = platform or "no"
         _save_heuristic(rec)
         return
 
-    # No evidence at all
     _set(rec, "unresolved",
          "insufficient evidence", "low",
-         "No usable evidence found.")
+         "Недостаточно данных для классификации.")
     rec.missing_evidence = [
-        "Need build detection, in-tree source, or link evidence."
+        "Требуется: обнаружение в системе сборки, исходники внутри репозитория или улики линковки."
     ]
     _save_heuristic(rec)
 
@@ -124,25 +110,12 @@ def _compute_discovery_source(
     has_build_integration: bool,
     has_final_link: bool,
 ) -> str:
-    """
-    Determine how the component was discovered — used for segmentation in reports.
-
-    Rules (priority order, first match wins):
-      - has in-tree source dirs                  -> "in-tree source"
-      - has build config (detect/integrate/link) -> "build config"
-      - has only #include evidence               -> "header only"
-      - nothing                                  -> "unknown"
-
-    A component can combine sources, e.g. "in-tree source + build config"
-    when vendored dirs AND build macros both point to it.
-    """
     parts: list[str] = []
     if has_in_tree:
         parts.append("in-tree source")
     if has_detection or has_build_integration or has_final_link:
         parts.append("build config")
     if has_include and not parts:
-        # only add "header only" when there's no stronger evidence
         parts.append("header only")
     return " + ".join(parts) if parts else "unknown"
 
@@ -171,17 +144,17 @@ def _detect_platform(rec: ComponentRecord) -> str | None:
         )
     )
     if any(x in evidence_text for x in ("windows", "windivert", "winsock")):
-        return "yes: windows-specific"
-    if any(x in evidence_text for x in ("dpdk",)):
-        return "yes: optional DPDK backend"
-    if any(x in evidence_text for x in ("pfring",)):
-        return "yes: optional PF_RING backend"
-    if any(x in evidence_text for x in ("netmap",)):
-        return "yes: optional Netmap backend"
+        return "yes: специфично для Windows"
+    if "dpdk" in evidence_text:
+        return "yes: опциональный бэкенд DPDK"
+    if "pfring" in evidence_text:
+        return "yes: опциональный бэкенд PF_RING"
+    if "netmap" in evidence_text:
+        return "yes: опциональный бэкенд Netmap"
     if any(x in evidence_text for x in ("napatech", "ntapi")):
-        return "yes: optional Napatech backend"
+        return "yes: опциональный бэкенд Napatech"
     if any(x in evidence_text for x in ("xdp", "ebpf")):
-        return "yes: optional XDP/eBPF backend"
+        return "yes: опциональный бэкенд XDP/eBPF"
     if any(x in evidence_text for x in ("afpacket", "af_packet")):
-        return "yes: Linux AF_PACKET backend"
+        return "yes: бэкенд Linux AF_PACKET"
     return None

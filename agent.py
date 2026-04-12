@@ -6,6 +6,7 @@ from classifier import prefill_classification
 from extractor import collect_evidence, extract_candidates
 from llm_client import BaseLLMClient, NoopLLMClient, judge_component
 from models import ComponentRecord
+from version_extractor import extract_versions
 
 
 def _should_skip_llm(rec: ComponentRecord) -> bool:
@@ -82,4 +83,20 @@ def analyze_repo(
 
     if verbose:
         print("[3/3] Classifying ...")
-    return classify_all(records, client, verbose=verbose)
+    results = classify_all(records, client, verbose=verbose)
+
+    if verbose:
+        print("[4/4] Extracting versions ...")
+    extract_versions(results, repo)
+
+    # Pass 2: cve-bin-tool checkers на исходниках (если установлен)
+    try:
+        from cve_checkers_adapter import enrich_records
+        enrich_records(results)
+        if verbose:
+            found = sum(1 for r in results if r.version not in ("unknown", "n/a", ""))
+            print(f"      versions found: {found}/{len(results)}")
+    except ImportError:
+        pass  # cve-bin-tool не установлен — пропускаем
+
+    return results
