@@ -47,6 +47,14 @@ class ComponentRecord:
     heuristic_evidence_level: str = ""
     heuristic_confidence: str = ""
 
+    # Discovery source — computed after evidence collection
+    # Possible values (may be combined with " + "):
+    #   "in-tree source"   — found as vendored directory with .c/.cpp files
+    #   "header only"      — found only via #include, no build evidence
+    #   "build config"     — found in configure.ac / Makefile.am / CMakeLists.txt etc.
+    #   "system header"    — standard/compiler/kernel header
+    discovery_source: str = ""
+
     def all_evidence(self) -> list[EvidenceItem]:
         return (
             self.include_evidence
@@ -68,6 +76,7 @@ class ComponentRecord:
             "why": self.why,
             "optional_or_platform_specific": self.optional_or_platform_specific,
             "missing_evidence": self.missing_evidence,
+            "discovery_source": self.discovery_source,
             "heuristic": {
                 "classification": self.heuristic_classification,
                 "evidence_level": self.heuristic_evidence_level,
