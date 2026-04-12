@@ -473,6 +473,96 @@ def build_xlsx(records: list[ComponentRecord], out_path: Path) -> None:
             sc(c, bg=bg, size=9, fg="555555" if j > 1 else "000000", bold=(j==1))
         ws5.row_dimensions[row].height = 16
 
+    # ── Sheets 6-9: Segmented by discovery_source ────────────────────────────
+    segments = [
+        ("in-tree source",          "In-Tree Source",    C_GREEN_HEAD,  C_GREEN_LIGHT,
+         "Components found as vendored source directories inside the repository."),
+        ("build config",            "Build Config",      C_BLUE_HEAD,   C_BLUE_LIGHT,
+         "Components found in build system files (configure.ac, Makefile.am, CMakeLists.txt, etc.)."),
+        ("header only",             "Header Only",       C_AMBER_HEAD,  C_AMBER_LIGHT,
+         "Components found only via #include directives — no build system evidence found."),
+        ("in-tree source + build config", "In-Tree + Build", C_GREEN_HEAD, "EAF9F0",
+         "Components with both vendored source AND build system evidence (strongest signal)."),
+    ]
+
+    seg_cols_cfg = [
+        ("Component",           20),
+        ("Classification",      26),
+        ("Evidence level",      28),
+        ("Confidence",          12),
+        ("Discovery source",    24),
+        ("Optional / platform", 24),
+        ("Rationale",           50),
+    ]
+
+    for seg_key, seg_title, hc, lc, seg_desc in segments:
+        # match if discovery_source contains the key (handles combined sources)
+        if seg_key in ("in-tree source + build config",):
+            subset = [r for r in records if r.discovery_source == seg_key]
+        else:
+            subset = [r for r in records
+                      if r.discovery_source == seg_key
+                      or (seg_key != "in-tree source + build config"
+                          and r.discovery_source.startswith(seg_key)
+                          and "+" not in r.discovery_source)]
+
+        safe_title = seg_title[:31]  # Excel sheet name limit
+        wsN = wb.create_sheet(safe_title)
+        wsN.sheet_view.showGridLines = False
+        wsN.freeze_panes = "A3"
+
+        for j, (name, width) in enumerate(seg_cols_cfg, 1):
+            wsN.column_dimensions[col(j)].width = width
+
+        wsN.merge_cells(f"A1:{col(len(seg_cols_cfg))}1")
+        c = wsN["A1"]
+        c.value = f"{seg_title} ({len(subset)} components) — {seg_desc}"
+        sc(c, bg=C_DARK, fg=C_WHITE, bold=True, size=11, h="left", border=False)
+        wsN.row_dimensions[1].height = 28
+
+        for j, (name, _) in enumerate(seg_cols_cfg, 1):
+            c = wsN.cell(row=2, column=j, value=name)
+            sc(c, bg=hc, fg=C_WHITE, bold=True, size=10, h="center")
+        wsN.row_dimensions[2].height = 20
+
+        if not subset:
+            c = wsN.cell(row=3, column=1, value="No components in this segment.")
+            sc(c, fg="888888", size=10, italic=True)
+            continue
+
+        for i, rec in enumerate(subset):
+            row = i + 3
+            bg  = lc if i % 2 == 0 else C_WHITE
+            vals = [
+                rec.normalized_name,
+                rec.classification,
+                rec.evidence_level,
+                rec.confidence.upper(),
+                rec.discovery_source,
+                rec.optional_or_platform_specific if rec.optional_or_platform_specific != "no" else "-",
+                rec.why,
+            ]
+            for j, v in enumerate(vals, 1):
+                c = wsN.cell(row=row, column=j, value=v)
+                if j == 2:
+                    sc(c, bg=CLS_BG.get(rec.classification, bg),
+                       fg=CLS_FG.get(rec.classification, "000000"), bold=True, size=10)
+                elif j == 4:
+                    sc(c, bg=CONF_BG.get(rec.confidence, bg),
+                       fg=CONF_FG.get(rec.confidence, "000000"), bold=True, size=10, h="center")
+                elif j == 7:
+                    sc(c, bg=bg, size=9, wrap=True, fg="444444")
+                else:
+                    sc(c, bg=bg, size=10, bold=(j==1))
+            wsN.row_dimensions[row].height = max(20, min(60, 14 + (len(rec.why) // 60) * 14))
+
+        seg_table = Table(
+            displayName=f"Seg_{seg_title.replace(' ', '_').replace('+', 'And')}",
+            ref=f"A2:{col(len(seg_cols_cfg))}{len(subset)+2}",
+        )
+        seg_table.tableStyleInfo = TableStyleInfo(name="TableStyleLight2", showRowStripes=True)
+        wsN.add_table(seg_table)
+
     wb.save(str(out_path))
 
 
