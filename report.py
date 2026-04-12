@@ -494,8 +494,8 @@ def write_reports(records: list[ComponentRecord], out_dir: Path) -> None:
 
     json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     md_path.write_text(build_markdown(records), encoding="utf-8")
-    print(f"  report.json  → {json_path}")
-    print(f"  report.md    → {md_path}")
+    print(f"  report.json  -> {json_path}")
+    print(f"  report.md    -> {md_path}")
 
     build_xlsx(records, xlsx_path)
-    print(f"  report.xlsx  → {xlsx_path}")
+    print(f"  report.xlsx  -> {xlsx_path}")
