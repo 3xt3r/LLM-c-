@@ -25,6 +25,8 @@ _SOURCE_EXTRA: dict[str, list[str]] = {
     ],
     "connman": [r'VERSION\s+"([0-9]+\.[0-9]+)"'],
     "sysstat":  [r'PACKAGE_VERSION\s+"([0-9]+\.[0-9]+\.[0-9]+)"'],
+    "sqlite":   [r'SQLITE_VERSION\s+"([0-9]+\.[0-9]+\.[0-9]+)"'],
+    "sqlite3":  [r'SQLITE_VERSION\s+"([0-9]+\.[0-9]+\.[0-9]+)"'],
 }
 
 _CHECKER_MAP: dict[str, type] = {}
@@ -36,7 +38,13 @@ SOURCE_EXTS = frozenset({
 META_FILES = frozenset({
     "configure.ac", "configure.in", "cmakelists.txt", "meson.build",
     "version.h", "config.h", "makefile.am", "makefile.in",
-    "version.txt", "version", "vcpkg.json", "changelog", "news",
+    "version.txt", "version", "vcpkg.json",
+    # changelog/readme — нужны для некоторых checker'ов (libjpeg, bash и др.)
+    "changelog", "changelog.md", "changelog.txt",
+    "changes", "changes.md", "changes.txt",
+    "news", "news.md",
+    "readme", "readme.md", "readme.txt", "readme.rst",
+    "release", "release.txt", "release-notes",
 })
 
 
